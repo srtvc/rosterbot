@@ -1,0 +1,385 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RosterBot | Precision Roster Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        .sticky-col { position: sticky; left: 0; background-color: white; z-index: 40; border-right: 2px solid #e2e8f0; }
+        .cell-input:focus { outline: none; background-color: #fff; box-shadow: inset 0 0 0 2px #6366f1; }
+        
+        /* Tactical Shift Colors */
+        .shift-R { color: #be123c; font-weight: 800; } 
+        .shift-MN { color: #6d28d9; font-weight: 800; } 
+        .shift-O { color: #047857; font-weight: 800; } 
+        .shift-D { color: #1d4ed8; font-weight: 800; } 
+        .shift-CR { color: #b45309; font-weight: 800; border: 2px dashed #f59e0b !important; }
+        .shift-L { color: #64748b; font-weight: 800; text-decoration: line-through; opacity: 0.5; }
+        
+        /* THE PURPLE TWEAK */
+        .is-tweak { 
+            background-color: #f5f3ff !important; 
+            color: #5b21b6 !important;
+            box-shadow: inset 0 0 0 2px #ddd6fe !important;
+        }
+
+        .excess-cell { background-color: #f0fdf4 !important; }
+        .gap-cell { background-color: #fef2f2 !important; }
+
+        .custom-scrollbar::-webkit-scrollbar { height: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade { animation: fadeIn 0.3s ease-out forwards; }
+    </style>
+</head>
+<body class="min-h-screen pb-20">
+
+    <div class="max-w-[98%] mx-auto py-8 px-4">
+        <!-- Header -->
+        <header class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6">
+            <div class="animate-fade">
+                <div class="flex items-center gap-3">
+                    <div class="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-xl shadow-indigo-200">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    </div>
+                    <h1 class="text-5xl font-black tracking-tighter text-slate-900">ROSTER<span class="text-indigo-600">BOT</span></h1>
+                </div>
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em] mt-1 ml-1">Precision Roster Engine</p>
+            </div>
+            
+            <div class="flex flex-wrap gap-3 animate-fade">
+                <button onclick="exportCSV()" class="px-5 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-50 shadow-sm transition-all">CSV Export</button>
+                <button onclick="resetToPatternPrompt()" class="px-5 py-4 bg-white border border-red-100 text-red-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-red-50 transition-all">Restore Pattern</button>
+                <button onclick="extendRosterPrompt()" class="px-5 py-4 bg-slate-900 text-white border border-slate-800 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-black shadow-sm transition-all">Extend Timeline +</button>
+                <button onclick="runTacticalSolver()" class="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95">
+                    Make Roster
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 xl:grid-cols-6 gap-8">
+            <!-- Sidebar -->
+            <div class="xl:col-span-1 space-y-6 animate-fade">
+                <div class="bg-white p-6 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                    <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-full mb-6 italic">Configuration</h2>
+                    
+                    <div class="space-y-4 mb-8">
+                        <div>
+                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                            <input type="date" id="start-date" onchange="renderTable()" class="w-full mt-1 p-4 bg-slate-50 border-none rounded-2xl font-bold text-sm outline-none ring-1 ring-slate-100 focus:ring-2 focus:ring-indigo-500 transition-all">
+                        </div>
+                        <input type="hidden" id="days-count" value="14">
+                    </div>
+
+                    <div id="staff-list" class="space-y-3 max-h-[600px] overflow-y-auto custom-scrollbar pr-1">
+                        <!-- Personnel list -->
+                    </div>
+
+                    <button onclick="addStaff()" class="mt-6 w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 uppercase hover:border-indigo-400 hover:text-indigo-600 transition-all">
+                        + Add New Member
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Workspace -->
+            <div class="xl:col-span-5 animate-fade" style="animation-delay: 0.1s">
+                <div class="bg-white rounded-[3rem] border border-slate-200 shadow-2xl overflow-hidden">
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table id="roster-table" class="w-full border-collapse text-xs">
+                            <!-- Injected Table -->
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="flex flex-wrap gap-6 mt-8 px-8 justify-start">
+                    <div class="flex items-center gap-2 text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                        <span class="w-3 h-3 bg-purple-100 border border-purple-200 rounded"></span> Manual Adjustment
+                    </div>
+                    <div class="flex items-center gap-2 text-[10px] font-black text-slate-300 uppercase tracking-widest">
+                        <span class="w-3 h-3 bg-emerald-50 border border-emerald-100 rounded"></span> Coverage Surplus
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="extend-modal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] p-10 max-w-sm w-full shadow-2xl animate-fade">
+            <h3 class="text-2xl font-black mb-2 text-slate-900 tracking-tight">Extend</h3>
+            <p class="text-sm text-slate-500 mb-6 font-medium">Days to add to current timeline:</p>
+            <input type="number" id="extend-days-val" value="7" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black mb-8 focus:ring-2 focus:ring-indigo-600 outline-none">
+            <div class="flex gap-3">
+                <button onclick="closeModal('extend-modal')" class="flex-1 py-4 bg-slate-100 rounded-2xl font-bold text-slate-600 uppercase text-xs">Cancel</button>
+                <button onclick="confirmExtend()" class="flex-1 py-4 bg-indigo-600 rounded-2xl font-bold text-white uppercase text-xs shadow-lg shadow-indigo-100">Extend</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reset-modal" class="hidden fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] p-10 max-w-sm w-full shadow-2xl animate-fade">
+            <h3 class="text-2xl font-black mb-2 text-red-600 tracking-tight italic">Restore</h3>
+            <p class="text-sm text-slate-500 mb-8 font-medium">Wipe all manual tweaks and return to original rotation?</p>
+            <div class="flex gap-3">
+                <button onclick="closeModal('reset-modal')" class="flex-1 py-4 bg-slate-100 rounded-2xl font-bold text-slate-600 uppercase text-xs">No, Keep</button>
+                <button onclick="confirmReset()" class="flex-1 py-4 bg-red-600 rounded-2xl font-bold text-white uppercase text-xs shadow-lg shadow-red-100">Reset All</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- App State ---
+        let staff = [
+            { id: '1', name: 'PK', restDay: 2 },
+            { id: '2', name: 'SS', restDay: 3 },
+            { id: '3', name: 'AG', restDay: 4 },
+            { id: '4', name: 'RR', restDay: 5 }
+        ];
+        
+        let centralRegistry = {}; 
+        const BASE_PATTERN = ['R', 'D', 'MN', 'O', 'D', 'MN', 'O'];
+        const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        document.getElementById('start-date').valueAsDate = new Date();
+        renderStaffList();
+        renderTable();
+
+        function renderStaffList() {
+            const container = document.getElementById('staff-list');
+            container.innerHTML = '';
+            staff.forEach((p, i) => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 transition-all hover:border-indigo-300 group';
+                div.innerHTML = `
+                    <div class="flex flex-col">
+                        <button onclick="moveStaff(${i},-1)" class="text-slate-300 hover:text-indigo-600 ${i===0?'invisible':''}"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"></path></svg></button>
+                        <button onclick="moveStaff(${i},1)" class="text-slate-300 hover:text-indigo-600 ${i===staff.length-1?'invisible':''}"><svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"></path></svg></button>
+                    </div>
+                    <input type="text" value="${p.name}" onchange="updateStaffName(${i}, this.value)" class="flex-1 bg-transparent font-black text-slate-900 outline-none text-xs">
+                    <select onchange="staff[${i}].restDay=parseInt(this.value);renderTable()" class="bg-white border-none rounded-xl text-[8px] font-black text-slate-400 p-2 outline-none ring-1 ring-slate-100">
+                        ${WEEKDAYS.map((d,idx) => `<option value="${idx}" ${p.restDay===idx?'selected':''}>${d}</option>`).join('')}
+                    </select>
+                    <button onclick="staff.splice(${i},1);renderStaffList();renderTable()" class="text-slate-200 hover:text-red-500 p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function updateStaffName(idx, newVal) {
+            const oldName = staff[idx].name;
+            const newUpper = newVal.toUpperCase();
+            staff[idx].name = newUpper;
+            Object.keys(centralRegistry).forEach(key => {
+                if (key.startsWith(oldName + '-')) {
+                    const datePart = key.split('-').slice(1).join('-');
+                    centralRegistry[newUpper + '-' + datePart] = centralRegistry[key];
+                    delete centralRegistry[key];
+                }
+            });
+            renderTable();
+        }
+
+        function moveStaff(idx, dir) { [staff[idx], staff[idx+dir]] = [staff[idx+dir], staff[idx]]; renderStaffList(); renderTable(); }
+        function addStaff() { staff.push({ id: Date.now().toString(), name: 'NEW', restDay: 0 }); renderStaffList(); renderTable(); }
+
+        function renderTable() {
+            const startDate = new Date(document.getElementById('start-date').value);
+            const days = parseInt(document.getElementById('days-count').value) || 14;
+            const table = document.getElementById('roster-table');
+            const dates = [];
+            for(let i=0; i<days; i++) {
+                const d = new Date(startDate); d.setDate(startDate.getDate() + i);
+                dates.push({ iso: d.toISOString().split('T')[0], day: d.getDate(), month: d.toLocaleDateString('en-GB', { month: 'short' }), weekIdx: d.getDay(), weekday: WEEKDAYS[d.getDay()] });
+            }
+            let html = `<thead><tr class="bg-slate-50/50 border-b border-slate-200">
+                <th class="sticky-col p-8 text-left font-black text-slate-400 uppercase text-[9px] tracking-[0.2em] min-w-[220px]">Personnel Zone</th>`;
+            dates.forEach(d => {
+                html += `<th class="p-4 text-center border-r border-slate-50 min-w-[110px]">
+                    <div class="text-[10px] text-indigo-500 font-black tracking-tighter">${d.weekday}</div>
+                    <div class="text-slate-900 font-black text-sm">${d.day} ${d.month}</div>
+                </th>`;
+            });
+            html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
+            staff.forEach(p => {
+                html += `<tr><td class="sticky-col p-8 font-black text-slate-700 shadow-sm transition-all">${p.name}<div class="text-[8px] text-indigo-300 uppercase font-black mt-1 tracking-widest">${WEEKDAYS[p.restDay]} Anchor</div></td>`;
+                dates.forEach(d => {
+                    const key = `${p.name}-${d.iso}`;
+                    const entry = centralRegistry[key] || { val: '', isManual: false };
+                    html += `<td class="p-0 border-r border-slate-50">
+                        <input type="text" id="cell-${key}" value="${entry.val}" oninput="updateRegistryManually('${p.name}','${d.iso}',this.value)" placeholder="-" class="cell-input w-full p-6 text-center bg-transparent font-black uppercase text-sm transition-all ${entry.isManual?'is-tweak':''} shift-${entry.val}">
+                    </td>`;
+                });
+                html += `</tr>`;
+            });
+            html += `<tr class="bg-slate-900 text-white"><td class="sticky-col !bg-slate-900 p-6 font-black text-[9px] uppercase text-slate-500 italic tracking-[0.2em]">Operational Status</td>`;
+            dates.forEach(d => html += `<td id="cov-${d.iso}" class="p-2 text-center text-[8px] font-black">-</td>`);
+            html += `</tr></tbody>`;
+            table.innerHTML = html;
+            validateRoster();
+        }
+
+        function updateRegistryManually(name, date, val) {
+            const key = `${name}-${date}`;
+            const upper = val.toUpperCase();
+            if (upper === '') delete centralRegistry[key];
+            else centralRegistry[key] = { val: upper, isManual: true };
+            const el = document.getElementById(`cell-${key}`);
+            el.className = `cell-input w-full p-6 text-center bg-transparent font-black text-sm uppercase transition-all ${upper?'is-tweak':''} shift-${upper}`;
+            validateRoster();
+        }
+
+        function runTacticalSolver() {
+            const startDate = new Date(document.getElementById('start-date').value);
+            const days = parseInt(document.getElementById('days-count').value);
+            const solverBuffer = {};
+            const withdrawnRests = []; 
+            for(let i=0; i<days; i++) {
+                const currDate = new Date(startDate); currDate.setDate(startDate.getDate() + i);
+                const ds = currDate.toISOString().split('T')[0];
+                const weekday = currDate.getDay();
+                let dayAssignments = {};
+                staff.forEach(p => {
+                    const key = `${p.name}-${ds}`;
+                    if (centralRegistry[key] && centralRegistry[key].isManual) dayAssignments[p.name] = centralRegistry[key].val;
+                });
+                if (i > 0) {
+                    const pds = datesArray(startDate, i-1);
+                    staff.forEach(p => {
+                        const yesterdayActual = solverBuffer[`${p.name}-${pds}`];
+                        if (yesterdayActual === 'MN' && !dayAssignments[p.name]) dayAssignments[p.name] = 'O'; 
+                    });
+                }
+                staff.forEach(p => {
+                    if (dayAssignments[p.name]) return; 
+                    let ideal = BASE_PATTERN[(weekday - p.restDay + 7) % 7];
+                    if (ideal === 'O') {
+                        const pds = i > 0 ? datesArray(startDate, i-1) : null;
+                        const yesterdayActual = pds ? solverBuffer[`${p.name}-${pds}`] : null;
+                        if (yesterdayActual !== 'MN') ideal = 'D'; 
+                    }
+                    dayAssignments[p.name] = ideal;
+                });
+                const mandatory = ['D', 'MN', 'O'];
+                let missing = mandatory.filter(s => !Object.values(dayAssignments).includes(s));
+                if (missing.length > 0) {
+                    missing.forEach(miss => {
+                        let candidate = staff.find(p => dayAssignments[p.name] === 'D' && Object.values(dayAssignments).filter(v => v==='D').length > 1 && (!centralRegistry[`${p.name}-${ds}`] || !centralRegistry[`${p.name}-${ds}`].isManual));
+                        if (!candidate) {
+                            candidate = staff.find(p => dayAssignments[p.name] === 'R' && (!centralRegistry[`${p.name}-${ds}`] || !centralRegistry[`${p.name}-${ds}`].isManual));
+                            if (candidate) withdrawnRests.push({name: candidate.name, date: ds});
+                        }
+                        if (candidate) dayAssignments[candidate.name] = miss;
+                    });
+                }
+                staff.forEach(p => {
+                    if (dayAssignments[p.name] === 'D' && i >= 2 && (!centralRegistry[`${p.name}-${ds}`] || !centralRegistry[`${p.name}-${ds}`].isManual)) {
+                        const v1 = solverBuffer[`${p.name}-${datesArray(startDate, i-1)}`];
+                        const v2 = solverBuffer[`${p.name}-${datesArray(startDate, i-2)}`];
+                        if (v1 === 'D' && v2 === 'D') if (Object.values(dayAssignments).filter(v => v==='D').length > 1) dayAssignments[p.name] = 'R';
+                    }
+                });
+                staff.forEach(p => solverBuffer[`${p.name}-${ds}`] = dayAssignments[p.name]);
+            }
+            withdrawnRests.forEach(item => {
+                const restDate = new Date(item.date);
+                for(let j=1; j<30; j++) {
+                    const dsNext = datesArray(restDate, j);
+                    if(!solverBuffer[`${staff[0].name}-${dsNext}`]) break;
+                    const currentVal = solverBuffer[`${item.name}-${dsNext}`];
+                    const prevVal = solverBuffer[`${item.name}-${datesArray(restDate, j-1)}`];
+                    const isMandatoryO = (currentVal === 'O' && prevVal === 'MN');
+                    const countOfCurrentShift = staff.map(p => solverBuffer[`${p.name}-${dsNext}`]).filter(s => s === currentVal).length;
+                    if(countOfCurrentShift > 1 && !isMandatoryO && (!centralRegistry[`${item.name}-${dsNext}`] || !centralRegistry[`${item.name}-${dsNext}`].isManual) && !['R','L','CR'].includes(currentVal)) {
+                        solverBuffer[`${item.name}-${dsNext}`] = 'CR';
+                        break;
+                    }
+                }
+            });
+            Object.keys(solverBuffer).forEach(key => {
+                if (!centralRegistry[key] || !centralRegistry[key].isManual) centralRegistry[key] = { val: solverBuffer[key], isManual: false };
+            });
+            renderTable();
+        }
+
+        function datesArray(start, offset) {
+            const d = new Date(start); d.setDate(start.getDate() + offset);
+            return d.toISOString().split('T')[0];
+        }
+
+        function validateRoster() {
+            const startDate = new Date(document.getElementById('start-date').value);
+            const days = parseInt(document.getElementById('days-count').value);
+            for(let i=0; i<days; i++) {
+                const d = new Date(startDate); d.setDate(startDate.getDate() + i);
+                const ds = d.toISOString().split('T')[0];
+                const counts = { D: 0, MN: 0, O: 0, R: 0, CR: 0, L: 0 };
+                staff.forEach(p => {
+                    const key = `${p.name}-${ds}`;
+                    const val = centralRegistry[key] ? centralRegistry[key].val : '';
+                    if(val === 'CR') counts['O']++; 
+                    else if(counts.hasOwnProperty(val)) counts[val]++;
+                });
+                const covEl = document.getElementById(`cov-${ds}`);
+                const missing = ['D', 'MN', 'O'].filter(s => counts[s] === 0);
+                const excess = Object.entries(counts).filter(([k, v]) => ['D', 'MN', 'O'].includes(k) && v > 1);
+                if(missing.length > 0) {
+                    covEl.innerHTML = `<span class="bg-red-600 text-white px-2 py-0.5 rounded-lg uppercase text-[7px] tracking-widest">Gap</span>`;
+                    covEl.parentElement.classList.add('gap-cell');
+                } else if(excess.length > 0) {
+                    covEl.innerHTML = `<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-lg border border-emerald-200 uppercase text-[7px] tracking-widest">Surplus</span>`;
+                    covEl.parentElement.classList.remove('gap-cell');
+                } else {
+                    covEl.innerHTML = `<span class="text-slate-500 opacity-40 uppercase text-[7px] tracking-widest">Balanced</span>`;
+                    covEl.parentElement.classList.remove('gap-cell');
+                }
+                staff.forEach(p => {
+                    const key = `${p.name}-${ds}`;
+                    const el = document.getElementById(`cell-${key}`);
+                    if(el && ['D','MN','O'].includes(el.value) && counts[el.value] > 1) el.parentElement.classList.add('excess-cell');
+                    else if(el) el.parentElement.classList.remove('excess-cell');
+                });
+            }
+        }
+
+        function extendRosterPrompt() { document.getElementById('extend-modal').classList.remove('hidden'); }
+        function resetToPatternPrompt() { document.getElementById('reset-modal').classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function confirmExtend() {
+            const addDays = parseInt(document.getElementById('extend-days-val').value) || 7;
+            document.getElementById('days-count').value = parseInt(document.getElementById('days-count').value) + addDays;
+            closeModal('extend-modal');
+            renderTable();
+        }
+        function confirmReset() { centralRegistry = {}; closeModal('reset-modal'); renderTable(); }
+        function exportCSV() {
+            const startDate = document.getElementById('start-date').value;
+            const days = parseInt(document.getElementById('days-count').value);
+            let csv = "ROSTERBOT EXPORT\nName";
+            for(let i=0; i<days; i++) {
+                const d = new Date(startDate); d.setDate(d.getDate()+i);
+                csv += `,${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`;
+            }
+            csv += "\n";
+            staff.forEach(p => {
+                csv += p.name;
+                for(let i=0; i<days; i++) {
+                    const d = new Date(startDate); d.setDate(d.getDate()+i);
+                    csv += `,${(centralRegistry[`${p.name}-${d.toISOString().split('T')[0]}`] || {val:''}).val}`;
+                }
+                csv += "\n";
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'RosterBot_Export.csv'; a.click();
+        }
+    </script>
+</body>
+</html>
+
+```
